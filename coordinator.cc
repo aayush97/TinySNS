@@ -75,6 +75,40 @@ class CoordServiceImpl final : public CoordService::Service {
   
   Status Heartbeat(ServerContext* context, const ServerInfo* serverinfo, Confirmation* confirmation) override {
     std::cout<<"Got Heartbeat! "<<serverinfo->type()<<"("<<serverinfo->serverid()<<")"<<std::endl;
+    int server_id = serverinfo->serverid();
+    int cluster_id = (server_id % 3) + 1;
+    std::vector<zNode>& cluster = cluster1;
+    switch (cluster_id)
+    {
+    case 1:
+      cluster = cluster1;
+      break;
+    case 2:
+      cluster = cluster2;
+      break;
+    case 3:
+      cluster = cluster3;
+      break;
+    }
+    bool found = false;
+    for(auto node: cluster){
+      if (node.serverID == server_id){
+        node.last_heartbeat = getTimeNow(); 
+        found = true;
+        break;
+      }
+    }
+    if (!found){
+      zNode new_node = {.serverID = server_id,
+                        .hostname = serverinfo->hostname(),
+                        .port = serverinfo->port(),
+                        .type = serverinfo->type(),
+                        .last_heartbeat = getTimeNow(),
+                        .missed_heartbeat = false,
+                        };
+      cluster.push_back(new_node);
+    }
+
     confirmation->set_status(true);
     return Status::OK;
   }
