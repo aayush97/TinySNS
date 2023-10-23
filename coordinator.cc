@@ -75,8 +75,7 @@ class CoordServiceImpl final : public CoordService::Service {
   
   Status Heartbeat(ServerContext* context, const ServerInfo* serverinfo, Confirmation* confirmation) override {
     std::cout<<"Got Heartbeat! "<<serverinfo->type()<<"("<<serverinfo->serverid()<<")"<<std::endl;
-
-    
+    confirmation->set_status(true);
     return Status::OK;
   }
   
@@ -136,7 +135,7 @@ void RunServer(std::string port_no){
 
 int main(int argc, char** argv) {
   
-  std::string port = "3010";
+  std::string port = "9000";
   int opt = 0;
   while ((opt = getopt(argc, argv, "p:")) != -1){
     switch(opt) {
@@ -158,7 +157,7 @@ void checkHeartbeat(){
       //check servers for heartbeat > 10
       //if true turn missed heartbeat = true
       // Your code below
-      for(auto& s : "SERVERS"){
+      for(auto& s : cluster1){
 	if(difftime(getTimeNow(),s.last_heartbeat)>10){
 	  if(!s.missed_heartbeat){
 	    s.missed_heartbeat = true;

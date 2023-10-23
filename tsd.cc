@@ -45,19 +45,25 @@
 #include <google/protobuf/util/time_util.h>
 #include <grpc++/grpc++.h>
 #include <glog/logging.h>
+#include <thread>
 #define log(severity, msg) \
   LOG(severity) << msg;    \
   google::FlushLogFiles(google::severity);
 
+#include "coordinator.grpc.pb.h"
 #include "sns.grpc.pb.h"
 
+using csce438::Confirmation;
+using csce438::CoordService;
 using csce438::ListReply;
 using csce438::Message;
 using csce438::Reply;
 using csce438::Request;
+using csce438::ServerInfo;
 using csce438::SNSService;
 using google::protobuf::Duration;
 using google::protobuf::Timestamp;
+using grpc::ClientContext;
 using grpc::Server;
 using grpc::ServerBuilder;
 using grpc::ServerContext;
@@ -289,6 +295,73 @@ class SNSServiceImpl final : public SNSService::Service
   }
 };
 
+class ServerClass{
+public:
+  ServerClass(const std::string &hname,
+         const std::string &p, const std::string &c_hname, const std::string &c_p)
+      : hostname(hname), port(p), coord_hostname(c_hname), coord_port(c_p) {
+    connect();
+      }
+  void sendHeartBeats();
+
+protected:
+  int connect ();
+  int HeartBeat();
+
+private:
+  std::string hostname;
+  std::string port;
+  std::string coord_hostname;
+  std::string coord_port; 
+
+  // You can have an instance of the client stub
+  // as a member variable.
+  std::unique_ptr<CoordService::Stub> stub_;
+};
+
+int ServerClass::connect()
+{
+  std::string login_info = coord_hostname + ":" + coord_port;
+  stub_ = std::unique_ptr<CoordService::Stub>(CoordService::NewStub(
+      grpc::CreateChannel(
+          login_info, grpc::InsecureChannelCredentials())));
+  // HeartBeat();
+  // if (!ire.grpc_status.ok() || (ire.comm_status == FAILURE_ALREADY_EXISTS))
+  // {
+  //   return -1;
+  // }
+  return 1;
+}
+
+int ServerClass::HeartBeat(){
+  ClientContext context;
+  Confirmation confirmation;
+  ServerInfo server_info;
+  std::string type = "server";
+  server_info.set_serverid(1);
+  server_info.set_hostname(hostname);
+  server_info.set_port(port);
+  server_info.set_type(type);
+  Status status = stub_->Heartbeat(&context, server_info, &confirmation);
+  if(!status.ok() or !confirmation.status()){
+    std::cout << "Sending heartbeat failed!" << std::endl;
+    return -1;
+  }
+  return 0;
+}
+
+void ServerClass::sendHeartBeats(){
+  while(true){
+    std::cout << "Sending heartbeat!" << std::endl;
+    if (HeartBeat()==0){
+      sleep(3);
+    }
+    
+    // HeartBeat();
+  }
+}
+
+
 void RunServer(std::string port_no)
 {
   std::string server_address = "0.0.0.0:" + port_no;
@@ -308,14 +381,25 @@ int main(int argc, char **argv)
 {
 
   std::string port = "3010";
-
+  std::string coord_port = "9000";
+  int server_id = 1;
+  int cluster_id = 1;
   int opt = 0;
-  while ((opt = getopt(argc, argv, "p:")) != -1)
+  while ((opt = getopt(argc, argv, "p:k:s:c:")) != -1)
   {
     switch (opt)
     {
     case 'p':
       port = optarg;
+      break;
+    case 'k':
+      coord_port = optarg;
+      break;
+    case 's':
+      server_id = atoi(optarg);
+      break;
+    case 'c':
+      cluster_id = atoi(optarg);
       break;
     default:
       std::cerr << "Invalid Command Line Argument\n";
@@ -323,8 +407,12 @@ int main(int argc, char **argv)
   }
 
   std::string log_file_name = std::string("server-") + port;
-  google::InitGoogleLogging(log_file_name.c_str());
-  log(INFO, "Logging Initialized. Server starting...");
+  // google::InitGoogleLogging(log_file_name.c_str());
+  // log(INFO, "Logging Initialized. Server starting...");
+  ServerClass server_object("0.0.0.0", port, "0.0.0.0", coord_port);
+  // start thread to send heartbeats
+  // server_object.sendHeartBeats();
+  std::thread hb(&ServerClass::sendHeartBeats, &server_object);
   RunServer(port);
 
   return 0;
