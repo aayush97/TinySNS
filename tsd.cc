@@ -298,8 +298,8 @@ class SNSServiceImpl final : public SNSService::Service
 class ServerClass{
 public:
   ServerClass(const std::string &hname,
-         const std::string &p, const std::string &c_hname, const std::string &c_p)
-      : hostname(hname), port(p), coord_hostname(c_hname), coord_port(c_p) {
+         const std::string &p, const std::string &c_hname, const std::string &c_p, int s, int k)
+      : hostname(hname), port(p), coord_hostname(c_hname), coord_port(c_p), server_id(s), cluster_id(k) {
     connect();
       }
   void sendHeartBeats();
@@ -313,6 +313,8 @@ private:
   std::string port;
   std::string coord_hostname;
   std::string coord_port; 
+  int server_id;
+  int cluster_id;
 
   // You can have an instance of the client stub
   // as a member variable.
@@ -338,7 +340,7 @@ int ServerClass::HeartBeat(){
   Confirmation confirmation;
   ServerInfo server_info;
   std::string type = "server";
-  server_info.set_serverid(1);
+  server_info.set_serverid(server_id);
   server_info.set_hostname(hostname);
   server_info.set_port(port);
   server_info.set_type(type);
@@ -404,14 +406,11 @@ int main(int argc, char **argv)
     default:
       std::cerr << "Invalid Command Line Argument\n";
     }
-  }
-
+  }  
   std::string log_file_name = std::string("server-") + port;
-  // google::InitGoogleLogging(log_file_name.c_str());
-  // log(INFO, "Logging Initialized. Server starting...");
-  ServerClass server_object("0.0.0.0", port, "0.0.0.0", coord_port);
-  // start thread to send heartbeats
-  // server_object.sendHeartBeats();
+  google::InitGoogleLogging(log_file_name.c_str());
+  log(INFO, "Logging Initialized. Server starting...");
+  ServerClass server_object("0.0.0.0", port, "0.0.0.0", coord_port, server_id, cluster_id);
   std::thread hb(&ServerClass::sendHeartBeats, &server_object);
   RunServer(port);
 
