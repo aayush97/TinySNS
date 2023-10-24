@@ -96,9 +96,10 @@ class CoordServiceImpl final : public CoordService::Service {
       break;
     }
     bool found = false;
-    for(auto node: *cluster){
+    for(auto& node: *cluster){
       if (node.serverID == server_id){
         node.last_heartbeat = getTimeNow(); 
+        node.missed_heartbeat = false;
         found = true;
         break;
       }
@@ -155,7 +156,7 @@ class CoordServiceImpl final : public CoordService::Service {
     }else{
       // confirmation->set_status(false);
       serverinfo->set_hostname("not available");
-      std::cout << "Server from cluster: " << cluster_id << "with id: " << server_node->serverID << "is dead!"<< std::endl;
+      std::cout << "No server available in cluster: " << cluster_id << std::endl;
       log(INFO, "No server available in cluster " + std::to_string(cluster_id));
     }
     return Status::OK;
@@ -214,17 +215,27 @@ void checkHeartbeat(){
       //check servers for heartbeat > 10
       //if true turn missed heartbeat = true
       // Your code below
-      for(auto& s : cluster1){
-	if(difftime(getTimeNow(),s.last_heartbeat)>10){
-	  if(!s.missed_heartbeat){
-	    s.missed_heartbeat = true;
-	    s.last_heartbeat = getTimeNow();
-	  }else{
-	    
-	  }
-	}
+      for(auto& s : cluster1)
+      {
+        if(difftime(getTimeNow(),s.last_heartbeat)>10)
+        {
+            s.missed_heartbeat = true;
+          }
+        }
+      for (auto &s : cluster2)
+      {
+        if (difftime(getTimeNow(), s.last_heartbeat) > 10)
+        {
+          s.missed_heartbeat = true;
+        }
       }
-      
+      for (auto &s : cluster3)
+      {
+        if (difftime(getTimeNow(), s.last_heartbeat) > 10)
+        {
+            s.missed_heartbeat = true;
+        }
+      }
       sleep(3);
     }
 }
