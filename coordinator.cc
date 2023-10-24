@@ -77,21 +77,21 @@ class CoordServiceImpl final : public CoordService::Service {
     std::cout<<"Got Heartbeat! "<<serverinfo->type()<<"("<<serverinfo->serverid()<<")"<<std::endl;
     int server_id = serverinfo->serverid();
     int cluster_id = (server_id % 3) + 1;
-    std::vector<zNode>& cluster = cluster1;
+    std::vector<zNode>* cluster;
     switch (cluster_id)
     {
     case 1:
-      cluster = cluster1;
+      cluster = &cluster1;
       break;
     case 2:
-      cluster = cluster2;
+      cluster = &cluster2;
       break;
     case 3:
-      cluster = cluster3;
+      cluster = &cluster3;
       break;
     }
     bool found = false;
-    for(auto node: cluster){
+    for(auto node: *cluster){
       if (node.serverID == server_id){
         node.last_heartbeat = getTimeNow(); 
         found = true;
@@ -106,7 +106,8 @@ class CoordServiceImpl final : public CoordService::Service {
                         .last_heartbeat = getTimeNow(),
                         .missed_heartbeat = false,
                         };
-      cluster.push_back(new_node);
+      std::cout << "New server added to cluster: " << cluster_id << std::endl;
+      cluster->push_back(new_node);
     }
 
     confirmation->set_status(true);
@@ -119,24 +120,34 @@ class CoordServiceImpl final : public CoordService::Service {
   Status GetServer(ServerContext* context, const ID* id, ServerInfo* serverinfo) override {
     std::cout<<"Got GetServer for clientID: "<<id->id()<<std::endl;
     int cluster_id = (id->id()%3)+1;
-    zNode server_node;
+    zNode* server_node = NULL;
     switch(cluster_id){
       case 1:
-        server_node = cluster1[0];
+        if (cluster1.size()>0){
+          server_node = &cluster1[0];
+        }
+        break;
       case 2:
-        server_node = cluster2[0];
+        if(cluster2.size()>0){
+          server_node = &cluster2[0];
+        }
+        break;
       case 3:
-        server_node = cluster3[0];
+        if(cluster3.size()>0){
+          server_node = &cluster3[0];
+        }
+        break;
     }
-    if (!server_node.missed_heartbeat){
-      serverinfo->set_serverid(server_node.serverID);
-      serverinfo->set_hostname(server_node.hostname);
-      serverinfo->set_port(server_node.port);
-      serverinfo->set_type(server_node.type);
+    if (server_node!=NULL && server_node->isActive()){
+      serverinfo->set_serverid(server_node->serverID);
+      serverinfo->set_hostname(server_node->hostname);
+      serverinfo->set_port(server_node->port);
+      serverinfo->set_type(server_node->type);
       // confirmation->set_status(true)
     }else{
       // confirmation->set_status(false);
-      std::cout << "Server from cluster: " << cluster_id << "with id: " << server_node.serverID << "is dead!"<< std::endl;
+      serverinfo->set_hostname("not available");
+      std::cout << "Server from cluster: " << cluster_id << "with id: " << server_node->serverID << "is dead!"<< std::endl;
     }
     return Status::OK;
   }
