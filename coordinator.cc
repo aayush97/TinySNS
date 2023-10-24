@@ -17,6 +17,11 @@
 #include <unistd.h>
 #include <google/protobuf/util/time_util.h>
 #include <grpc++/grpc++.h>
+#include <glog/logging.h>
+
+#define log(severity, msg) \
+  LOG(severity) << msg;    \
+  google::FlushLogFiles(google::severity);
 
 #include "coordinator.grpc.pb.h"
 
@@ -75,7 +80,7 @@ class CoordServiceImpl final : public CoordService::Service {
   
   Status Heartbeat(ServerContext* context, const ServerInfo* serverinfo, Confirmation* confirmation) override {
     std::cout<<"Got Heartbeat! "<<serverinfo->type()<<"("<<serverinfo->serverid()<<")"<<std::endl;
-    int server_id = serverinfo->serverid();
+    log(INFO, "Got Heartbeat! " + serverinfo->type() + "(" + std::to_string(serverinfo->serverid()) + ")") int server_id = serverinfo->serverid();
     int cluster_id = (server_id % 3) + 1;
     std::vector<zNode>* cluster;
     switch (cluster_id)
@@ -107,7 +112,8 @@ class CoordServiceImpl final : public CoordService::Service {
                         .missed_heartbeat = false,
                         };
       std::cout << "New server added to cluster: " << cluster_id << std::endl;
-      cluster->push_back(new_node);
+      log(INFO, "New server added to cluster: " + std::to_string(cluster_id));
+          cluster->push_back(new_node);
     }
 
     confirmation->set_status(true);
@@ -119,7 +125,9 @@ class CoordServiceImpl final : public CoordService::Service {
   //hardcoded to represent this.
   Status GetServer(ServerContext* context, const ID* id, ServerInfo* serverinfo) override {
     std::cout<<"Got GetServer for clientID: "<<id->id()<<std::endl;
-    int cluster_id = (id->id()%3)+1;
+    log(INFO, "Got GetServer for clientID: " + std::to_string(id->id()));
+
+    int cluster_id = (id->id() % 3) + 1;
     zNode* server_node = NULL;
     switch(cluster_id){
       case 1:
@@ -148,6 +156,7 @@ class CoordServiceImpl final : public CoordService::Service {
       // confirmation->set_status(false);
       serverinfo->set_hostname("not available");
       std::cout << "Server from cluster: " << cluster_id << "with id: " << server_node->serverID << "is dead!"<< std::endl;
+      log(INFO, "No server available in cluster " + std::to_string(cluster_id));
     }
     return Status::OK;
   }
@@ -191,6 +200,9 @@ int main(int argc, char** argv) {
 	std::cerr << "Invalid Command Line Argument\n";
     }
   }
+  std::string log_file_name = std::string("coordinator-") + port;
+  google::InitGoogleLogging(log_file_name.c_str());
+  log(INFO, "Logging Initialized. Coordinator starting...");
   RunServer(port);
   return 0;
 }
