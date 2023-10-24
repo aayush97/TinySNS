@@ -9,11 +9,17 @@
 #include "client.h"
 
 #include "sns.grpc.pb.h"
+#include "coordinator.grpc.pb.h"
+
+using csce438::Confirmation;
+using csce438::CoordService;
 using csce438::ListReply;
 using csce438::Message;
 using csce438::Reply;
 using csce438::Request;
+using csce438::ServerInfo;
 using csce438::SNSService;
+using csce438::ID;
 using grpc::Channel;
 using grpc::ClientContext;
 using grpc::ClientReader;
@@ -59,6 +65,7 @@ private:
   // You can have an instance of the client stub
   // as a member variable.
   std::unique_ptr<SNSService::Stub> stub_;
+  std::unique_ptr<CoordService::Stub> coord_stub_;
 
   IReply Login();
   IReply List();
@@ -81,16 +88,44 @@ int Client::connectTo()
   // a member variable in your own Client class.
   // Please refer to gRpc tutorial how to create a stub.
   // ------------------------------------------------------------
+
+  // Connect to coordinator stub
   std::string login_info = hostname + ":" + port;
-  stub_ = std::unique_ptr<SNSService::Stub>(SNSService::NewStub(
+  coord_stub_ = std::unique_ptr<CoordService::Stub>(CoordService::NewStub(
       grpc::CreateChannel(
           login_info, grpc::InsecureChannelCredentials())));
+  
+  ServerInfo serverinfo;
+  ClientContext context;
+  ID id;
+  // set id to be equal to the last digit in the username
+  id.set_id(std::stoi(std::string(1,username[username.size()-1])));
+
+  Status status;
+  status = coord_stub_->GetServer(&context, id, &serverinfo);
+
+  // server node in desired cluster is not available
+  if (!status.ok() || serverinfo.hostname() == "not available")
+  {
+    return -1;
+  }
+
+  // Connect to server stub
+  std::string server_login_info;
+  server_login_info = serverinfo.hostname() + ":" + serverinfo.port();
+
+
+  
+  stub_ = std::unique_ptr<SNSService::Stub>(SNSService::NewStub(
+      grpc::CreateChannel(
+          server_login_info, grpc::InsecureChannelCredentials())));
 
   IReply ire = Login();
   if (!ire.grpc_status.ok() || (ire.comm_status == FAILURE_ALREADY_EXISTS))
   {
     return -1;
   }
+
   return 1;
 }
 
@@ -377,10 +412,10 @@ int main(int argc, char **argv)
 
   std::string hostname = "localhost";
   std::string username = "default";
-  std::string port = "3010";
+  std::string port = "9000";
 
   int opt = 0;
-  while ((opt = getopt(argc, argv, "h:u:p:")) != -1)
+  while ((opt = getopt(argc, argv, "h:u:k:")) != -1)
   {
     switch (opt)
     {
@@ -390,7 +425,7 @@ int main(int argc, char **argv)
     case 'u':
       username = optarg;
       break;
-    case 'p':
+    case 'k':
       port = optarg;
       break;
     default:
