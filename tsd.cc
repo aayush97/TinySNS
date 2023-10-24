@@ -381,13 +381,13 @@ void RunServer(std::string port_no)
 
 int main(int argc, char **argv)
 {
-
+  std::string hostname = "0.0.0.0";
   std::string port = "3010";
   std::string coord_port = "9000";
   int server_id = 1;
   int cluster_id = 1;
   int opt = 0;
-  while ((opt = getopt(argc, argv, "p:k:s:c:")) != -1)
+  while ((opt = getopt(argc, argv, "h:p:k:s:c:")) != -1)
   {
     switch (opt)
     {
@@ -402,6 +402,9 @@ int main(int argc, char **argv)
       break;
     case 'c':
       cluster_id = atoi(optarg);
+      break;
+    case 'h':
+      hostname = optarg;
       break;
     default:
       std::cerr << "Invalid Command Line Argument\n";
