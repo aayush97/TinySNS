@@ -180,6 +180,16 @@ IReply Client::processCommand(std::string &input)
   IReply ire;
   std::size_t index = input.find_first_of(" ");
   std::cout << "Processing " + input + ". ";
+  // check is server is up by trying to login
+  Request request;
+  request.set_username(username);
+  Reply reply;
+  ClientContext context;
+  Status status = stub_->Login(&context, request, &reply);
+  if(!status.ok()){
+    ire.comm_status = FAILURE_UNKNOWN;
+    return ire;
+  }
   if (index != std::string::npos)
   {
     std::string cmd = input.substr(0, index);
