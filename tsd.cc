@@ -318,8 +318,8 @@ private:
   std::string coord_port;
   bool is_master;
   bool is_active;
-  std::string counterpart_hostname;
-  std::string counterpart_port; 
+  std::string master_hostname;
+  std::string master_port; 
   int server_id;
   int cluster_id;
 
@@ -351,8 +351,13 @@ int ServerClass::HeartBeat(){
     std::cout << "Sending heartbeat failed!" << std::endl;
     return -1;
   }
-  server_info.set_type(confirmation.designation());
-  std::cout << "I am a " << server_info.type() << std::endl;
+  type = confirmation.designation();
+  master_hostname = confirmation.master_hostname();
+  master_port = confirmation.master_port();
+  std::cout << "I am a " << type << std::endl;
+  if(type==SLAVE){
+    std::cout << "Master is " << master_hostname << ":" << master_port << std::endl;
+  }
   return 0;
 }
 

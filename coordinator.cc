@@ -91,6 +91,17 @@ class CoordServiceImpl final : public CoordService::Service {
     }
     return status;
   }
+
+  zNode getMaster(std::vector<zNode>* cluster){
+    zNode master;
+    for(auto& node: *cluster){
+      if (node.isActive() && node.type == MASTER){
+        master = node;
+        break;
+      }
+    }
+    return master;
+  }
   Status Heartbeat(ServerContext* context, const ServerInfo* serverinfo, Confirmation* confirmation) override {
     std::cout<<"Got Heartbeat! "<<serverinfo->type()<<"("<<serverinfo->serverid()<<")"<<std::endl;
     log(INFO, "Got Heartbeat! " + serverinfo->type() + "(" + std::to_string(serverinfo->serverid()) + ")") int server_id = serverinfo->serverid();
@@ -118,6 +129,10 @@ class CoordServiceImpl final : public CoordService::Service {
           node.type = MASTER;
           std::cout << "New master elected in cluster: " << cluster_id << std::endl;
           log(INFO, "New master elected in cluster: " + std::to_string(cluster_id));
+        }else{
+          zNode master = getMaster(cluster);
+          confirmation->set_master_hostname(master.hostname);
+          confirmation->set_master_port(master.port);
         }
         confirmation->set_status(true);
         confirmation->set_designation(node.type);
@@ -126,8 +141,13 @@ class CoordServiceImpl final : public CoordService::Service {
     }
     if (!found){
       std::string designation;
+      std::string master_hostname;
+      std::string master_port;
       if (activeMasterInCluster(cluster)){
         designation = "slave";
+        zNode master = getMaster(cluster);
+        master_hostname = master.hostname;
+        master_port = master.port;
       }else{
         designation = "master";
       }
