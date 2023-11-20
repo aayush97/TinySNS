@@ -72,12 +72,25 @@ bool zNode::isActive(){
     }else if(difftime(getTimeNow(),last_heartbeat) < 10){
         status = true;
     }
+    if(!status){
+      type="slave";
+    }
     return status;
 }
 
 class CoordServiceImpl final : public CoordService::Service {
+  static const std::string MASTER;
 
-  
+  bool activeMasterInCluster(std::vector<zNode>* cluster){
+    bool status = false;
+    for(auto& node: *cluster){
+      if (node.isActive() && node.type == MASTER){
+        status = true;
+        break;
+      }
+    }
+    return status;
+  }
   Status Heartbeat(ServerContext* context, const ServerInfo* serverinfo, Confirmation* confirmation) override {
     std::cout<<"Got Heartbeat! "<<serverinfo->type()<<"("<<serverinfo->serverid()<<")"<<std::endl;
     log(INFO, "Got Heartbeat! " + serverinfo->type() + "(" + std::to_string(serverinfo->serverid()) + ")") int server_id = serverinfo->serverid();
@@ -101,23 +114,37 @@ class CoordServiceImpl final : public CoordService::Service {
         node.last_heartbeat = getTimeNow(); 
         node.missed_heartbeat = false;
         found = true;
+        if(!activeMasterInCluster(cluster)){
+          node.type = MASTER;
+          std::cout << "New master elected in cluster: " << cluster_id << std::endl;
+          log(INFO, "New master elected in cluster: " + std::to_string(cluster_id));
+        }
+        confirmation->set_status(true);
+        confirmation->set_designation(node.type);
         break;
       }
     }
     if (!found){
-      zNode new_node = {.serverID = server_id,
-                        .hostname = serverinfo->hostname(),
-                        .port = serverinfo->port(),
-                        .type = serverinfo->type(),
-                        .last_heartbeat = getTimeNow(),
-                        .missed_heartbeat = false,
-                        };
+      std::string designation;
+      if (activeMasterInCluster(cluster)){
+        designation = "slave";
+      }else{
+        designation = "master";
+      }
+      zNode new_node = {
+          .serverID = server_id,
+          .hostname = serverinfo->hostname(),
+          .port = serverinfo->port(),
+          .type = designation,
+          .last_heartbeat = getTimeNow(),
+          .missed_heartbeat = false,
+      };
       std::cout << "New server added to cluster: " << cluster_id << std::endl;
       log(INFO, "New server added to cluster: " + std::to_string(cluster_id));
-          cluster->push_back(new_node);
-    }
-
-    confirmation->set_status(true);
+      cluster->push_back(new_node); // new server added to cluster
+      confirmation->set_status(true); 
+      confirmation->set_designation(designation);
+    }    
     return Status::OK;
   }
   
@@ -164,7 +191,7 @@ class CoordServiceImpl final : public CoordService::Service {
   
 
 };
-
+const std::string CoordServiceImpl::MASTER = "master";
 void RunServer(std::string port_no){
   //start thread to check heartbeats
   std::thread hb(checkHeartbeat);

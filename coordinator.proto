@@ -25,6 +25,7 @@ message ServerInfo{
 //confirmation message definition
 message Confirmation{
   bool status = 1;
+  string designation = 2;
 }
 
 //id message definition

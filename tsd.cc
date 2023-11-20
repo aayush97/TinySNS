@@ -309,10 +309,17 @@ protected:
   int HeartBeat();
 
 private:
+  static const std::string MASTER;
+  static const std::string SLAVE;
+  std::string type;
   std::string hostname;
   std::string port;
   std::string coord_hostname;
-  std::string coord_port; 
+  std::string coord_port;
+  bool is_master;
+  bool is_active;
+  std::string counterpart_hostname;
+  std::string counterpart_port; 
   int server_id;
   int cluster_id;
 
@@ -327,11 +334,7 @@ int ServerClass::connect()
   stub_ = std::unique_ptr<CoordService::Stub>(CoordService::NewStub(
       grpc::CreateChannel(
           login_info, grpc::InsecureChannelCredentials())));
-  // HeartBeat();
-  // if (!ire.grpc_status.ok() || (ire.comm_status == FAILURE_ALREADY_EXISTS))
-  // {
-  //   return -1;
-  // }
+
   return 1;
 }
 
@@ -339,7 +342,6 @@ int ServerClass::HeartBeat(){
   ClientContext context;
   Confirmation confirmation;
   ServerInfo server_info;
-  std::string type = "server";
   server_info.set_serverid(server_id);
   server_info.set_hostname(hostname);
   server_info.set_port(port);
@@ -349,6 +351,8 @@ int ServerClass::HeartBeat(){
     std::cout << "Sending heartbeat failed!" << std::endl;
     return -1;
   }
+  server_info.set_type(confirmation.designation());
+  std::cout << "I am a " << server_info.type() << std::endl;
   return 0;
 }
 
@@ -378,7 +382,8 @@ void RunServer(std::string port_no)
 
   server->Wait();
 }
-
+const std::string ServerClass::MASTER = "master";
+const std::string ServerClass::SLAVE = "slave";
 int main(int argc, char **argv)
 {
   std::string hostname = "0.0.0.0";
