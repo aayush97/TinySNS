@@ -26,8 +26,8 @@ message ServerInfo{
 message Confirmation{
   bool status = 1;
   string designation = 2;
-  string master_hostname = 3;
-  string master_port = 4;
+  string worker_hostname = 3;
+  string worker_port = 4;
 }
 
 //id message definition

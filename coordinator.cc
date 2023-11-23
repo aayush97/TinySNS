@@ -41,25 +41,145 @@ using csce438::ID;
 // using csce438::ServerList;
 // using csce438::SynchService;
 
-struct zNode{
-    int serverID;
-    std::string hostname;
-    std::string port;
-    std::string type;
-    std::time_t last_heartbeat;
-    bool missed_heartbeat;
-    bool isActive();
+std::time_t getTimeNow();
 
+struct zNode
+{
+  int serverID;
+  std::string hostname;
+  std::string port;
+  std::string type;
+  std::time_t last_heartbeat;
+  bool missed_heartbeat;
+  bool isActive();
 };
+
+class Cluster{
+  private:
+    zNode master;
+    zNode worker;
+  public:
+    Cluster(){
+      master = {
+        .serverID = -1,
+        .hostname = "",
+        .port = "",
+        .type = "master",
+        .last_heartbeat = getTimeNow(),
+        .missed_heartbeat = false,
+      };
+      worker = {
+        .serverID = -1,
+        .hostname = "",
+        .port = "",
+        .type = "slave",
+        .last_heartbeat = getTimeNow(),
+        .missed_heartbeat = false,
+      };
+    }
+    zNode& getMaster();
+    zNode& getWorker();
+    void receiveHeartBeat(int server_id);
+    void addServer(int server_id, std::string hostname, std::string port);
+    void removeServer(int server_id);
+    void switchRoles();
+    bool findServer(int server_id);
+    zNode& getServer(int server_id);
+};
+
+zNode& Cluster::getMaster(){
+  return master;
+}
+
+zNode& Cluster::getWorker(){
+  return worker;
+}
+
+void Cluster::receiveHeartBeat(int server_id){
+  if (master.serverID == server_id){
+    master.last_heartbeat = getTimeNow();
+    master.missed_heartbeat = false;
+  }else if (worker.serverID == server_id){
+    worker.last_heartbeat = getTimeNow();
+    worker.missed_heartbeat = false;
+  }
+}
+
+void Cluster::addServer(int server_id, std::string hostname, std::string port){
+  if (master.serverID == -1){
+    master.serverID = server_id;
+    master.hostname = hostname;
+    master.port = port;
+    master.last_heartbeat = getTimeNow();
+    master.missed_heartbeat = false;
+  }else if (worker.serverID == -1){
+    worker.serverID = server_id;
+    worker.hostname = hostname;
+    worker.port = port;
+    worker.last_heartbeat = getTimeNow();
+    worker.missed_heartbeat = false;
+  }else{
+    std::cout << "Cluster is full" << std::endl;
+  }
+}
+
+void Cluster::removeServer(int server_id){
+  if (master.serverID == server_id){
+    master.serverID = -1;
+    master.hostname = "";
+    master.port = "";
+    master.last_heartbeat = getTimeNow();
+    master.missed_heartbeat = false;
+  }else if (worker.serverID == server_id){
+    worker.serverID = -1;
+    worker.hostname = "";
+    worker.port = "";
+    worker.last_heartbeat = getTimeNow();
+    worker.missed_heartbeat = false;
+  }else{
+    std::cout << "Server not found" << std::endl;
+  }
+}
+
+void Cluster::switchRoles(){
+  if (master.serverID != -1 && worker.serverID != -1){
+    std::string temp_hostname = master.hostname;
+    std::string temp_port = master.port;
+    master.hostname = worker.hostname;
+    master.port = worker.port;
+    worker.hostname = temp_hostname;
+    worker.port = temp_port;
+  }else{
+    std::cout << "Cluster is not full" << std::endl;
+  }
+}
+
+bool Cluster::findServer(int server_id){
+  if (master.serverID == server_id || worker.serverID == server_id){
+    return true;
+  }else{
+    return false;
+  }
+}
+
+zNode& Cluster::getServer(int server_id){
+  if (master.serverID == server_id){
+    return master;
+  }else if (worker.serverID == server_id){
+    return worker;
+  }else{
+    std::cout << "Server not found" << std::endl;
+  }
+}
 
 //potentially thread safe
 std::mutex v_mutex;
-std::vector<zNode> cluster1;
-std::vector<zNode> cluster2;
-std::vector<zNode> cluster3;
+Cluster cluster1;
+Cluster cluster2;
+Cluster cluster3;
 
 // use a map to store clusters
-std::map<int, std::vector<zNode>*> clusters;
+std::map<int, Cluster*> clusters;
 
 //func declarations
 int findServer(std::vector<zNode> v, int id);
@@ -83,78 +203,26 @@ bool zNode::isActive(){
 class CoordServiceImpl final : public CoordService::Service {
   static const std::string MASTER;
 
-  bool activeMasterInCluster(std::vector<zNode>* cluster){
-    bool status = false;
-    for(auto& node: *cluster){
-      if (node.isActive() && node.type == MASTER){
-        status = true;
-        break;
-      }
-    }
-    return status;
-  }
-
-  zNode getMaster(std::vector<zNode>* cluster){
-    zNode master;
-    for(auto& node: *cluster){
-      if (node.isActive() && node.type == MASTER){
-        master = node;
-        break;
-      }
-    }
-    return master;
-  }
   Status Heartbeat(ServerContext* context, const ServerInfo* serverinfo, Confirmation* confirmation) override {
     std::cout<<"Got Heartbeat! "<<serverinfo->type()<<"("<<serverinfo->serverid()<<")"<<std::endl;
     log(INFO, "Got Heartbeat! " + serverinfo->type() + "(" + std::to_string(serverinfo->serverid()) + ")") int server_id = serverinfo->serverid();
     int cluster_id = (server_id % 3) + 1;
-    std::vector<zNode>* cluster = clusters[cluster_id];
-    bool found = false;
-    for(auto& node: *cluster){
-      if (node.serverID == server_id){
-        node.last_heartbeat = getTimeNow(); 
-        node.missed_heartbeat = false;
-        found = true;
-        if(!activeMasterInCluster(cluster)){
-          node.type = MASTER;
-          std::cout << "New master elected in cluster: " << cluster_id << std::endl;
-          log(INFO, "New master elected in cluster: " + std::to_string(cluster_id));
-        }else{
-          zNode master = getMaster(cluster);
-          confirmation->set_master_hostname(master.hostname);
-          confirmation->set_master_port(master.port);
-        }
-        confirmation->set_status(true);
-        confirmation->set_designation(node.type);
-        break;
-      }
+    Cluster* cluster = clusters[cluster_id];
+    if (cluster->findServer(server_id)){
+      cluster->receiveHeartBeat(server_id);
+    }else{
+      cluster->addServer(server_id, serverinfo->hostname(), serverinfo->port());
     }
-    if (!found){
-      std::string designation;
-      std::string master_hostname;
-      std::string master_port;
-      if (activeMasterInCluster(cluster)){
-        designation = "slave";
-        zNode master = getMaster(cluster);
-        master_hostname = master.hostname;
-        master_port = master.port;
-      }else{
-        designation = "master";
-      }
-      zNode new_node = {
-          .serverID = server_id,
-          .hostname = serverinfo->hostname(),
-          .port = serverinfo->port(),
-          .type = designation,
-          .last_heartbeat = getTimeNow(),
-          .missed_heartbeat = false,
-      };
-      std::cout << "New server added to cluster: " << cluster_id << std::endl;
-      log(INFO, "New server added to cluster: " + std::to_string(cluster_id));
-      cluster->push_back(new_node); // new server added to cluster
-      confirmation->set_status(true); 
-      confirmation->set_designation(designation);
-    }    
+    zNode& cur_server = cluster->getServer(server_id);
+    zNode& master = cluster->getMaster();
+    zNode& worker = cluster->getWorker();
+    if (!master.isActive() && worker.isActive()){
+      cluster->switchRoles();
+    }
+    confirmation->set_status(true);
+    confirmation->set_designation(cur_server.type);
+    confirmation->set_worker_hostname(worker.hostname);
+    confirmation->set_worker_port(worker.port);
     return Status::OK;
   }
   
@@ -166,7 +234,7 @@ class CoordServiceImpl final : public CoordService::Service {
     log(INFO, "Got GetServer for clientID: " + std::to_string(id->id()));
 
     int cluster_id = (id->id() % 3) + 1;
-    zNode server_node = getMaster(clusters[cluster_id]);
+    zNode& server_node = clusters[cluster_id]->getMaster();
     if (server_node.isActive()){
       serverinfo->set_serverid(server_node.serverID);
       serverinfo->set_hostname(server_node.hostname);
@@ -238,28 +306,20 @@ void checkHeartbeat(){
       //check servers for heartbeat > 10
       //if true turn missed heartbeat = true
       // Your code below
-      for(auto& s : cluster1)
-      {
-        if(difftime(getTimeNow(),s.last_heartbeat)>10)
+      for(auto& cluster: clusters){
+        zNode& s1 = cluster.second->getMaster();
+
+        if(difftime(getTimeNow(),s1.last_heartbeat)>10)
         {
-            s.missed_heartbeat = true;
-          }
+          s1.missed_heartbeat = true;
         }
-      for (auto &s : cluster2)
-      {
-        if (difftime(getTimeNow(), s.last_heartbeat) > 10)
+        zNode& s2 = cluster.second->getWorker();
+        if (difftime(getTimeNow(), s2.last_heartbeat) > 10)
         {
-          s.missed_heartbeat = true;
-        }
-      }
-      for (auto &s : cluster3)
-      {
-        if (difftime(getTimeNow(), s.last_heartbeat) > 10)
-        {
-            s.missed_heartbeat = true;
+          s2.missed_heartbeat = true;
         }
       }
-      sleep(3);
+        sleep(3);
     }
 }
 

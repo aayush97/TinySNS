@@ -335,8 +335,8 @@ private:
   std::string coord_port;
   bool is_master;
   bool is_active;
-  std::string master_hostname;
-  std::string master_port; 
+  std::string worker_hostname;
+  std::string worker_port; 
   int server_id;
   int cluster_id;
 
@@ -369,11 +369,11 @@ int ServerClass::HeartBeat(){
     return -1;
   }
   type = confirmation.designation();
-  master_hostname = confirmation.master_hostname();
-  master_port = confirmation.master_port();
+  worker_hostname = confirmation.worker_hostname();
+  worker_port = confirmation.worker_port();
   std::cout << "I am a " << type << std::endl;
-  if(type==SLAVE){
-    std::cout << "Master is " << master_hostname << ":" << master_port << std::endl;
+  if(type==MASTER){
+    std::cout << "Slave is " << worker_hostname << ":" << worker_port << std::endl;
   }
   return 0;
 }
