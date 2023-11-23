@@ -58,6 +58,8 @@ std::vector<zNode> cluster1;
 std::vector<zNode> cluster2;
 std::vector<zNode> cluster3;
 
+// use a map to store clusters
+std::map<int, std::vector<zNode>*> clusters;
 
 //func declarations
 int findServer(std::vector<zNode> v, int id);
@@ -106,19 +108,7 @@ class CoordServiceImpl final : public CoordService::Service {
     std::cout<<"Got Heartbeat! "<<serverinfo->type()<<"("<<serverinfo->serverid()<<")"<<std::endl;
     log(INFO, "Got Heartbeat! " + serverinfo->type() + "(" + std::to_string(serverinfo->serverid()) + ")") int server_id = serverinfo->serverid();
     int cluster_id = (server_id % 3) + 1;
-    std::vector<zNode>* cluster;
-    switch (cluster_id)
-    {
-    case 1:
-      cluster = &cluster1;
-      break;
-    case 2:
-      cluster = &cluster2;
-      break;
-    case 3:
-      cluster = &cluster3;
-      break;
-    }
+    std::vector<zNode>* cluster = clusters[cluster_id];
     bool found = false;
     for(auto& node: *cluster){
       if (node.serverID == server_id){
@@ -176,29 +166,12 @@ class CoordServiceImpl final : public CoordService::Service {
     log(INFO, "Got GetServer for clientID: " + std::to_string(id->id()));
 
     int cluster_id = (id->id() % 3) + 1;
-    zNode* server_node = NULL;
-    switch(cluster_id){
-      case 1:
-        if (cluster1.size()>0){
-          server_node = &cluster1[0];
-        }
-        break;
-      case 2:
-        if(cluster2.size()>0){
-          server_node = &cluster2[0];
-        }
-        break;
-      case 3:
-        if(cluster3.size()>0){
-          server_node = &cluster3[0];
-        }
-        break;
-    }
-    if (server_node!=NULL && server_node->isActive()){
-      serverinfo->set_serverid(server_node->serverID);
-      serverinfo->set_hostname(server_node->hostname);
-      serverinfo->set_port(server_node->port);
-      serverinfo->set_type(server_node->type);
+    zNode server_node = getMaster(clusters[cluster_id]);
+    if (server_node.isActive()){
+      serverinfo->set_serverid(server_node.serverID);
+      serverinfo->set_hostname(server_node.hostname);
+      serverinfo->set_port(server_node.port);
+      serverinfo->set_type(server_node.type);
       // confirmation->set_status(true)
     }else{
       // confirmation->set_status(false);
@@ -239,6 +212,9 @@ int main(int argc, char** argv) {
   
   std::string port = "9000";
   int opt = 0;
+  clusters[1] = &cluster1;
+  clusters[2] = &cluster2;
+  clusters[3] = &cluster3;
   while ((opt = getopt(argc, argv, "p:")) != -1){
     switch(opt) {
       case 'p':

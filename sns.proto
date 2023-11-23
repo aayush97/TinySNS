@@ -42,11 +42,25 @@ service SNSService{
   rpc UnFollow (Request) returns (Reply) {}
   // Bidirectional streaming RPC
   rpc Timeline (stream Message) returns (stream Message) {} 
+  rpc forward(Request) returns (Reply) {}
+  rpc shareOwnInfo(Request) returns (Reply) {}
 }
 
 message ListReply {
   repeated string all_users = 1;
   repeated string followers = 2;
+}
+
+message ForwardRequest{
+  string command = 1;
+  string username = 2;
+  repeated string arguments = 3;
+}
+
+message OwnInfo{
+  string hostname = 1;
+  string port = 2;
+  string designation = 3;
 }
 
 message Request {

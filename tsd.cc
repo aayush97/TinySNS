@@ -57,6 +57,7 @@ using csce438::Confirmation;
 using csce438::CoordService;
 using csce438::ListReply;
 using csce438::Message;
+using csce438::ForwardRequest;
 using csce438::Reply;
 using csce438::Request;
 using csce438::ServerInfo;
@@ -291,6 +292,22 @@ class SNSServiceImpl final : public SNSService::Service
     }
     // If the client disconnected from Chat Mode, set connected to false
     c->connected = false;
+    return Status::OK;
+  }
+
+  Status forward(ServerContext *context, const ForwardRequest *forward_request, Reply *reply){
+    std::string command = forward_request->command();
+    Request request;
+    request.set_username(forward_request->username());
+    for (int i = 0; i < forward_request->arguments_size(); i++){
+      request.add_arguments(forward_request->arguments(i));
+    }
+    if(command == "follow"){
+      Follow(context, &request, reply);
+    }
+    else if(command == "unfollow"){
+      UnFollow(context, &request, reply);
+    }
     return Status::OK;
   }
 };
