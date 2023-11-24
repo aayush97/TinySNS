@@ -112,12 +112,14 @@ void Cluster::addServer(int server_id, std::string hostname, std::string port){
     master.port = port;
     master.last_heartbeat = getTimeNow();
     master.missed_heartbeat = false;
+    master.type = "master";
   }else if (worker.serverID == -1){
     worker.serverID = server_id;
     worker.hostname = hostname;
     worker.port = port;
     worker.last_heartbeat = getTimeNow();
     worker.missed_heartbeat = false;
+    worker.type = "slave";
   }else{
     std::cout << "Cluster is full" << std::endl;
   }
@@ -145,10 +147,24 @@ void Cluster::switchRoles(){
   if (master.serverID != -1 && worker.serverID != -1){
     std::string temp_hostname = master.hostname;
     std::string temp_port = master.port;
+    std:time_t temp_last_heartbeat = master.last_heartbeat;
+    bool temp_missed_heartbeat = master.missed_heartbeat;
+    int temp_serverID = master.serverID;
+  
+    master.serverID = worker.serverID;
     master.hostname = worker.hostname;
     master.port = worker.port;
+    master.last_heartbeat = worker.last_heartbeat;
+    master.missed_heartbeat = worker.missed_heartbeat;
+    master.type = "master";
+
+    worker.serverID = temp_serverID;
     worker.hostname = temp_hostname;
     worker.port = temp_port;
+    worker.last_heartbeat = temp_last_heartbeat;
+    worker.missed_heartbeat = temp_missed_heartbeat;
+    worker.type = "slave";
+    
   }else{
     std::cout << "Cluster is not full" << std::endl;
   }
@@ -217,6 +233,7 @@ class CoordServiceImpl final : public CoordService::Service {
     zNode& master = cluster->getMaster();
     zNode& worker = cluster->getWorker();
     if (!master.isActive() && worker.isActive()){
+      std::cout <<"Switching roles"<<std::endl;
       cluster->switchRoles();
     }
     confirmation->set_status(true);

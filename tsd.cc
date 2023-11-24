@@ -87,6 +87,10 @@ struct Client
   }
 };
 
+std::string worker_hostname = "";
+std::string worker_port = "";
+std::string type = "";
+
 // Vector that stores every client that has been created
 std::vector<Client *> client_db;
 
@@ -102,6 +106,7 @@ int find_user(std::string username)
   }
   return -1;
 }
+std::unique_ptr<SNSService::Stub> sns_stub_;
 
 class SNSServiceImpl final : public SNSService::Service
 {
@@ -148,6 +153,7 @@ class SNSServiceImpl final : public SNSService::Service
       user2->client_followers.push_back(user1);
       reply->set_msg("Follow Successful");
     }
+    forward_to_worker("follow", username1, username2);
     return Status::OK;
   }
 
@@ -208,6 +214,7 @@ class SNSServiceImpl final : public SNSService::Service
         user->connected = true;
       }
     }
+    forward_to_worker("login", username, "");
     return Status::OK;
   }
 
@@ -307,8 +314,32 @@ class SNSServiceImpl final : public SNSService::Service
     }
     else if(command == "unfollow"){
       UnFollow(context, &request, reply);
+    } else if (command == "login"){
+      Login(context, &request, reply);
     }
     return Status::OK;
+  }
+
+  void forward_to_worker(std::string command, std::string username, std::string argument){
+    if (type != "master" || worker_hostname == "" || worker_port == ""){
+      return;
+    }
+    std::string server_login_info;
+    server_login_info = worker_hostname + ":" + worker_port;
+
+    sns_stub_ = std::unique_ptr<SNSService::Stub>(SNSService::NewStub(
+        grpc::CreateChannel(
+            server_login_info, grpc::InsecureChannelCredentials())));
+    ClientContext context;
+    ForwardRequest forward_request;
+    forward_request.set_command(command);
+    forward_request.set_username(username);
+    forward_request.add_arguments(argument);
+    Reply reply;
+    Status status = sns_stub_->forward(&context, forward_request, &reply);
+    if(!status.ok()){
+      std::cout << "Forwarding failed!" << std::endl;
+    }
   }
 };
 
@@ -328,15 +359,12 @@ protected:
 private:
   static const std::string MASTER;
   static const std::string SLAVE;
-  std::string type;
   std::string hostname;
   std::string port;
   std::string coord_hostname;
   std::string coord_port;
   bool is_master;
   bool is_active;
-  std::string worker_hostname;
-  std::string worker_port; 
   int server_id;
   int cluster_id;
 

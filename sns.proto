@@ -42,7 +42,7 @@ service SNSService{
   rpc UnFollow (Request) returns (Reply) {}
   // Bidirectional streaming RPC
   rpc Timeline (stream Message) returns (stream Message) {} 
-  rpc forward(Request) returns (Reply) {}
+  rpc forward(ForwardRequest) returns (Reply) {}
   rpc shareOwnInfo(Request) returns (Reply) {}
 }
 
