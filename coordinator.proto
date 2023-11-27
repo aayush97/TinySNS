@@ -12,6 +12,9 @@ service CoordService{
   rpc Heartbeat (ServerInfo) returns (Confirmation) {}
   rpc GetServer (ID) returns (ServerInfo) {}
   // ZooKeeper API here
+  rpc GetAllFollowerServers (ID) returns (ServerList) {}
+  rpc GetFollowerServer (ID) returns (ServerInfo) {}
+  rpc Init (ServerInfo) returns (Confirmation) {}
 }
 
 //server info message definition
@@ -35,4 +38,26 @@ message ID{
   int32 id = 1;
 }
 
+message ServerList{
+  repeated int32 serverID = 1;
+  repeated string hostname = 2;
+  repeated string port = 3;
+  repeated string type = 4;
+}
 
+
+service SynchService{
+  rpc GetAllUsers (Confirmation) returns (AllUsers) {}
+  rpc GetTLFL (ID) returns (TLFL) {}
+  rpc ResynchServer (ServerInfo) returns (Confirmation) {}
+}
+
+message TLFL{
+  bool status = 1;
+  repeated string TL = 2;
+  repeated string FL = 3;
+}
+
+message AllUsers{
+  repeated string users = 1;
+}

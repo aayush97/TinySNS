@@ -90,6 +90,8 @@ struct Client
 std::string worker_hostname = "";
 std::string worker_port = "";
 std::string type = "";
+int server_id;
+int cluster_id;
 
 // Vector that stores every client that has been created
 std::vector<Client *> client_db;
@@ -118,16 +120,45 @@ class SNSServiceImpl final : public SNSService::Service
     Client *user = client_db[find_user(request->username())];
 
     int index = 0;
-    for (Client *c : client_db)
+    // Read all users from file into client database
+    std::string line;
+    std::ifstream in("./" + type + std::to_string(cluster_id) + "/" + "all_users");
+    std::cout << "Reading all users from file" << std::endl;
+    while (getline(in, line))
     {
-      list_reply->add_all_users(c->username);
+      // if (line == user->username)
+      //   continue;
+      list_reply->add_all_users(line);
     }
-    std::vector<Client *>::const_iterator it;
-    for (it = user->client_followers.begin(); it != user->client_followers.end(); it++)
+    in.close();
+
+    // iterate through all users list and their following list to find the followers
+    std::cout << "Reading followers from file" << std::endl;
+    for (int i = 0; i < list_reply->all_users_size(); i++)
     {
-      list_reply->add_followers((*it)->username);
+      std::string temp_username = list_reply->all_users(i);
+      std::ifstream in3("./" + type + std::to_string(cluster_id) + "/" + temp_username + "_follow_list");
+      while (getline(in3, line))
+      {
+        if (line == user->username)
+        {
+          list_reply->add_followers(temp_username);
+          break;
+        }
+      }
+      in3.close();
     }
     return Status::OK;
+    // for (Client *c : client_db)
+    // {
+    //   list_reply->add_all_users(c->username);
+    // }
+    // std::vector<Client *>::const_iterator it;
+    // for (it = user->client_followers.begin(); it != user->client_followers.end(); it++)
+    // {
+    //   list_reply->add_followers((*it)->username);
+    // }
+    // return Status::OK;
   }
 
   Status Follow(ServerContext *context, const Request *request, Reply *reply) override
@@ -151,6 +182,10 @@ class SNSServiceImpl final : public SNSService::Service
       }
       user1->client_following.push_back(user2);
       user2->client_followers.push_back(user1);
+      // Create a new file to store all the followers of current user
+      std::ofstream following_file("./" + type + std::to_string(cluster_id) + "/" + username1+"_follow_list", std::ios::app | std::ios::out | std::ios::in);
+      following_file << username2 << "\n";
+      following_file.close();
       reply->set_msg("Follow Successful");
     }
     forward_to_worker("follow", username1, username2);
@@ -197,6 +232,12 @@ class SNSServiceImpl final : public SNSService::Service
     {
       c->username = username;
       client_db.push_back(c);
+      // Create a new file to store all the users managed by the server
+      int this_cluster_id = (server_id%3)+1;
+      std::ofstream all_users_file("./" + type + std::to_string(this_cluster_id) + "/" + "managed_users.txt", std::ios::app | std::ios::out | std::ios::in);
+      all_users_file << username << "\n";
+      // close the file
+      all_users_file.close();
       reply->set_msg("Login Successful!");
     }
     else
@@ -290,8 +331,8 @@ class SNSServiceImpl final : public SNSService::Service
         // For each of the current user's followers, put the message in their following.txt file
         std::string temp_username = temp_client->username;
         std::string temp_file = temp_username + "following.txt";
-        std::ofstream following_file(temp_file, std::ios::app | std::ios::out | std::ios::in);
-        following_file << fileinput;
+        std::ofstream timeline_file("./" + type + std::to_string(cluster_id) + "/" + username + "_timeline", std::ios::app | std::ios::out | std::ios::in);
+        timeline_file << fileinput;
         temp_client->following_file_size++;
         std::ofstream user_file(temp_username + ".txt", std::ios::app | std::ios::out | std::ios::in);
         user_file << fileinput;
@@ -347,7 +388,11 @@ class ServerClass{
 public:
   ServerClass(const std::string &hname,
          const std::string &p, const std::string &c_hname, const std::string &c_p, int s, int k)
-      : hostname(hname), port(p), coord_hostname(c_hname), coord_port(c_p), server_id(s), cluster_id(k) {
+      : hostname(hname), port(p), coord_hostname(c_hname), coord_port(c_p) {
+        server_id = s;
+        cluster_id = (server_id%3) + 1;
+        is_master = false;
+        is_active = false;
     connect();
       }
   void sendHeartBeats();
@@ -365,8 +410,6 @@ private:
   std::string coord_port;
   bool is_master;
   bool is_active;
-  int server_id;
-  int cluster_id;
 
   // You can have an instance of the client stub
   // as a member variable.

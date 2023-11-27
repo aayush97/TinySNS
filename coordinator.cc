@@ -38,7 +38,7 @@ using csce438::CoordService;
 using csce438::ServerInfo;
 using csce438::Confirmation;
 using csce438::ID;
-// using csce438::ServerList;
+using csce438::ServerList;
 // using csce438::SynchService;
 
 std::time_t getTimeNow();
@@ -58,6 +58,7 @@ class Cluster{
   private:
     zNode master;
     zNode worker;
+    zNode follower;
   public:
     Cluster(){
       master = {
@@ -76,9 +77,19 @@ class Cluster{
         .last_heartbeat = getTimeNow(),
         .missed_heartbeat = false,
       };
+      follower = {
+        .serverID = -1,
+        .hostname = "",
+        .port = "",
+        .type = "follower",
+        .last_heartbeat = getTimeNow(),
+        .missed_heartbeat = false,
+      };
     }
     zNode& getMaster();
     zNode& getWorker();
+    zNode& getFollower();
+    void setFollower(zNode& follower);
     void receiveHeartBeat(int server_id);
     void addServer(int server_id, std::string hostname, std::string port);
     void removeServer(int server_id);
@@ -188,6 +199,17 @@ zNode& Cluster::getServer(int server_id){
   }
 }
 
+zNode& Cluster::getFollower(){
+  return follower;
+}
+
+void Cluster::setFollower(zNode& follower){
+  this->follower.serverID = follower.serverID;
+  this->follower.hostname = follower.hostname;
+  this->follower.port = follower.port;
+  this->follower.type = follower.type;
+}
+
 //potentially thread safe
 std::mutex v_mutex;
 Cluster cluster1;
@@ -266,8 +288,64 @@ class CoordServiceImpl final : public CoordService::Service {
     }
     return Status::OK;
   }
-  
 
+  Status GetAllFollowerServers(ServerContext* context, const ID* id, ServerList* serverlist) override {
+    std::cout<<"Got GetAllFollowerServers for clientID: "<<id->id()<<std::endl;
+    log(INFO, "Got GetAllFollowerServers for clientID: " + std::to_string(id->id()));
+
+    for(int i=1; i<=3; i++){
+      zNode &follower_node = clusters[i]->getFollower();
+      if(follower_node.serverID == -1){
+        continue;
+      }
+      serverlist->add_serverid(follower_node.serverID);
+      serverlist->add_hostname(follower_node.hostname);
+      serverlist->add_port(follower_node.port);
+      serverlist->add_type("follower");
+    }
+    return Status::OK;
+  }
+
+  Status GetFollowerServer(ServerContext* context, const ID* id, ServerInfo* serverinfo) override {
+    std::cout<<"Got GetFollowerServer for clientID: "<<id->id()<<std::endl;
+    log(INFO, "Got GetFollowerServer for clientID: " + std::to_string(id->id()));
+
+    int cluster_id = (id->id() % 3) + 1;
+    zNode& server_node = clusters[cluster_id]->getFollower();
+    if (server_node.isActive()){
+      serverinfo->set_serverid(server_node.serverID);
+      serverinfo->set_hostname(server_node.hostname);
+      serverinfo->set_port(server_node.port);
+      serverinfo->set_type(server_node.type);
+      // confirmation->set_status(true)
+    }else{
+      // confirmation->set_status(false);
+      serverinfo->set_hostname("not available");
+      std::cout << "No server available in cluster: " << cluster_id << std::endl;
+      log(INFO, "No server available in cluster " + std::to_string(cluster_id));
+    }
+    return Status::OK;
+  }
+
+  Status Init(ServerContext* context, const ServerInfo* serverinfo, Confirmation* confirmation) override {
+    // Only follower servers send init messages
+    std::cout<<"Got Init! "<<serverinfo->type()<<"("<<serverinfo->serverid()<<")"<<std::endl;
+    log(INFO, "Got Init! " + serverinfo->type() + "(" + std::to_string(serverinfo->serverid()) + ")");
+
+    int server_id = serverinfo->serverid();
+    zNode follower = {
+      .serverID = server_id,
+      .hostname = serverinfo->hostname(),
+      .port = serverinfo->port(),
+      .type = "follower",
+      .last_heartbeat = getTimeNow(),
+      .missed_heartbeat = false,
+    };
+    Cluster* cluster = clusters[server_id];
+    cluster->setFollower(follower);
+    confirmation->set_status(true);
+    return Status::OK;
+  }
 };
 const std::string CoordServiceImpl::MASTER = "master";
 void RunServer(std::string port_no){
