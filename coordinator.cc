@@ -310,7 +310,7 @@ class CoordServiceImpl final : public CoordService::Service {
     std::cout<<"Got GetFollowerServer for clientID: "<<id->id()<<std::endl;
     log(INFO, "Got GetFollowerServer for clientID: " + std::to_string(id->id()));
 
-    int cluster_id = (id->id() % 3) + 1;
+    int cluster_id = id->id();
     zNode& server_node = clusters[cluster_id]->getFollower();
     if (server_node.isActive()){
       serverinfo->set_serverid(server_node.serverID);

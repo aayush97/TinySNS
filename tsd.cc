@@ -112,58 +112,60 @@ std::unique_ptr<SNSService::Stub> sns_stub_;
 
 class SNSServiceImpl final : public SNSService::Service
 {
-
-  Status List(ServerContext *context, const Request *request, ListReply *list_reply) override
+  void initialize_client_db()
   {
-    log(INFO, "Serving List Request from: " + request->username() + "\n");
-
-    Client *user = client_db[find_user(request->username())];
-
-    int index = 0;
     // Read all users from file into client database
     std::string line;
     std::ifstream in("./" + type + std::to_string(cluster_id) + "/" + "all_users");
     std::cout << "Reading all users from file" << std::endl;
     while (getline(in, line))
     {
-      // if (line == user->username)
-      //   continue;
-      list_reply->add_all_users(line);
+      if(find_user(line) < 0){
+        Client *c = new Client();
+        c->username = line;
+        client_db.push_back(c);
+      }
     }
     in.close();
-
-    // iterate through all users list and their following list to find the followers
-    std::cout << "Reading followers from file" << std::endl;
-    for (int i = 0; i < list_reply->all_users_size(); i++)
+    // Read all following from file into client database
+    for (Client *c : client_db)
     {
-      std::string temp_username = list_reply->all_users(i);
-      std::ifstream in3("./" + type + std::to_string(cluster_id) + "/" + temp_username + "_follow_list");
-      while (getline(in3, line))
+      std::ifstream in2("./" + type + std::to_string(cluster_id) + "/" + c->username + "_follow_list");
+      while (getline(in2, line))
       {
-        if (line == user->username)
-        {
-          list_reply->add_followers(temp_username);
-          break;
+
+        // if not already in the following list, add it
+        if (std::find(c->client_following.begin(), c->client_following.end(), client_db[find_user(line)]) == c->client_following.end()){
+          Client *other_user = client_db[find_user(line)];
+          c->client_following.push_back(other_user);
+          other_user->client_followers.push_back(c);
         }
       }
-      in3.close();
+      in2.close();
+    }
+
+  }
+  Status List(ServerContext *context, const Request *request, ListReply *list_reply) override
+  {
+    log(INFO, "Serving List Request from: " + request->username() + "\n");
+
+    initialize_client_db();
+    Client *user = client_db[find_user(request->username())];
+    for (Client *c : client_db)
+    {
+      list_reply->add_all_users(c->username);
+    }
+    std::vector<Client *>::const_iterator it;
+    for (it = user->client_followers.begin(); it != user->client_followers.end(); it++)
+    {
+      list_reply->add_followers((*it)->username);
     }
     return Status::OK;
-    // for (Client *c : client_db)
-    // {
-    //   list_reply->add_all_users(c->username);
-    // }
-    // std::vector<Client *>::const_iterator it;
-    // for (it = user->client_followers.begin(); it != user->client_followers.end(); it++)
-    // {
-    //   list_reply->add_followers((*it)->username);
-    // }
-    // return Status::OK;
   }
 
   Status Follow(ServerContext *context, const Request *request, Reply *reply) override
   {
-
+    initialize_client_db();
     std::string username1 = request->username();
     std::string username2 = request->arguments(0);
     log(INFO, "Serving Follow Request from: " + username1 + " for: " + username2 + "\n");
@@ -194,6 +196,7 @@ class SNSServiceImpl final : public SNSService::Service
 
   Status UnFollow(ServerContext *context, const Request *request, Reply *reply) override
   {
+    initialize_client_db();
     std::string username1 = request->username();
     std::string username2 = request->arguments(0);
     log(INFO, "Serving Unfollow Request from: " + username1 + " for: " + username2);
@@ -223,6 +226,7 @@ class SNSServiceImpl final : public SNSService::Service
   // RPC Login
   Status Login(ServerContext *context, const Request *request, Reply *reply) override
   {
+    initialize_client_db();
     Client *c = new Client();
     std::string username = request->username();
     log(INFO, "Serving Login Request: " + username + "\n");
