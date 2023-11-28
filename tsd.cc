@@ -274,16 +274,17 @@ class SNSServiceImpl final : public SNSService::Service
       std::string username = message.username();
       int user_index = find_user(username);
       c = client_db[user_index];
-
       // Write the current message to "username.txt"
-      std::string filename = username + ".txt";
+      std::string filename = "./" + type + std::to_string(cluster_id) + "/" + username + "_timeline";
       std::ofstream user_file(filename, std::ios::app | std::ios::out | std::ios::in);
       google::protobuf::Timestamp temptime = message.timestamp();
       std::string time = google::protobuf::util::TimeUtil::ToString(temptime);
       std::string fileinput = time + " :: " + message.username() + ":" + message.msg() + "\n";
+      forward_to_worker("timeline", username, fileinput);
       //"Set Stream" is the default message from the client to initialize the stream
-      if (message.msg() != "Set Stream")
+      if (message.msg() != "Set Stream" and message.msg() != "Update\n")
         user_file << fileinput;
+        // also update the stream from file
       // If message = "Set Stream", print the first 20 chats from the people you follow
       else
       {
@@ -291,7 +292,7 @@ class SNSServiceImpl final : public SNSService::Service
           c->stream = stream;
         std::string line;
         std::vector<std::string> newest_twenty;
-        std::ifstream in(username + "following.txt");
+        std::ifstream in("./" + type + std::to_string(cluster_id) + "/" + username + "_following.txt");
         int count = 0;
         // Read the last up-to-20 lines (newest 20 messages) from userfollowing.txt
         while (getline(in, line))
@@ -306,9 +307,9 @@ class SNSServiceImpl final : public SNSService::Service
         }
         Message new_msg;
         // Send the newest messages to the client to be displayed
-        if (newest_twenty.size() >= 40)
+        if (newest_twenty.size() >= 20)
         {
-          for (int i = newest_twenty.size() - 40; i < newest_twenty.size(); i += 2)
+          for (int i = newest_twenty.size() - 20; i < newest_twenty.size(); i += 1)
           {
             new_msg.set_msg(newest_twenty[i]);
             stream->Write(new_msg);
@@ -316,7 +317,7 @@ class SNSServiceImpl final : public SNSService::Service
         }
         else
         {
-          for (int i = 0; i < newest_twenty.size(); i += 2)
+          for (int i = 0; i < newest_twenty.size(); i += 1)
           {
             new_msg.set_msg(newest_twenty[i]);
             stream->Write(new_msg);
@@ -334,11 +335,11 @@ class SNSServiceImpl final : public SNSService::Service
           temp_client->stream->Write(message);
         // For each of the current user's followers, put the message in their following.txt file
         std::string temp_username = temp_client->username;
-        std::string temp_file = temp_username + "following.txt";
-        std::ofstream timeline_file("./" + type + std::to_string(cluster_id) + "/" + username + "_timeline", std::ios::app | std::ios::out | std::ios::in);
+        std::string temp_file = temp_username + "_following.txt";
+        std::ofstream timeline_file("./" + type + std::to_string(cluster_id) + "/" + temp_file, std::ios::app | std::ios::out | std::ios::in);
         timeline_file << fileinput;
         temp_client->following_file_size++;
-        std::ofstream user_file(temp_username + ".txt", std::ios::app | std::ios::out | std::ios::in);
+        std::ofstream user_file(temp_username + "_timeline", std::ios::app | std::ios::out | std::ios::in);
         user_file << fileinput;
       }
     }
@@ -361,6 +362,13 @@ class SNSServiceImpl final : public SNSService::Service
       UnFollow(context, &request, reply);
     } else if (command == "login"){
       Login(context, &request, reply);
+    }else if (command=="timeline"){
+      std::string username = request.username();
+      std::string filename = "./" + type + std::to_string(cluster_id) + "/" + username + "_timeline";
+      std::ofstream user_file(filename, std::ios::app | std::ios::out | std::ios::in);
+      std::string fileinput = request.arguments(0);
+      user_file << fileinput;
+      user_file.close();
     }
     return Status::OK;
   }

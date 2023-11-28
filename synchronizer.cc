@@ -277,6 +277,55 @@ void run_synchronizer(std::string coordIP, std::string coordPort, std::string po
                     file<<tlfl.fl(i)<<std::endl;
                 }
                 file.close();
+            }else{
+                // sync their timeline
+                // get following list
+                std::vector<std::string> fl = get_tl_or_fl(synchID, std::stoi(i), false);
+                std::vector<std::string> timeline_posts;
+                // for each user in following list
+                for(auto j : fl){
+                    // get the client cluster id
+                    int cluster_id = (std::stoi(j)%3) + 1;
+                    // get follower server info from coordinator
+                    ID msg;
+                    msg.set_id(cluster_id);
+                    grpc::ClientContext context;
+                    ServerInfo serverinfo;
+                    coord_stub_->GetFollowerServer(&context, msg, &serverinfo);
+                    // set up stub
+                    std::string synchIP = serverinfo.hostname();
+                    std::string synchPort = serverinfo.port();
+                    std::string target_str = synchIP + ":" + synchPort;
+                    std::unique_ptr<SynchService::Stub> sync_stub_;
+                    sync_stub_ = std::unique_ptr<SynchService::Stub>(SynchService::NewStub(grpc::CreateChannel(target_str, grpc::InsecureChannelCredentials())));
+                    // send GetTLFL request
+                    TLFL tlfl;
+                    grpc::ClientContext context2;
+                    msg.set_id(std::stoi(j));
+                    sync_stub_->GetTLFL(&context2, msg, &tlfl); 
+                    // add to timeline_posts
+                    for(int i = 0; i<tlfl.tl_size(); i++){
+                        timeline_posts.push_back(tlfl.tl(i));
+                    }                   
+                }
+                // write to file
+                std::string filename = "./master" + std::to_string(synchID) + "/" + i + "_following.txt";
+                std::ofstream file;
+                file.open(filename, std::ios::ios_base::out);
+                // sort timeline_posts by timestamp
+                std::sort(timeline_posts.begin(), timeline_posts.end());
+                for (int i = 0; i < timeline_posts.size(); i++)
+                {
+                    file << timeline_posts[i] << std::endl;
+                }
+                file.close();
+                filename = "./slave" + std::to_string(synchID) + "/" + i + "_following.txt";
+                file.open(filename, std::ios::ios_base::out);
+                for (int i = 0; i < timeline_posts.size(); i++)
+                {
+                    file << timeline_posts[i] << std::endl;
+                }
+                file.close();
             }
         }
     }
