@@ -123,6 +123,7 @@ class SNSServiceImpl final : public SNSService::Service
       if(find_user(line) < 0){
         Client *c = new Client();
         c->username = line;
+        c->connected = false;
         client_db.push_back(c);
       }
     }
@@ -235,6 +236,12 @@ class SNSServiceImpl final : public SNSService::Service
     if (user_index < 0)
     {
       c->username = username;
+      if (type == "master"){
+        c->connected = true;
+      }
+      else{
+        c->connected = false;
+      }
       client_db.push_back(c);
       // Create a new file to store all the users managed by the server
       int this_cluster_id = (server_id%3)+1;
@@ -252,7 +259,7 @@ class SNSServiceImpl final : public SNSService::Service
         log(WARNING, "User already logged on");
         reply->set_msg("you have already joined");
       }
-      else
+      else if(type == "master")
       {
         std::string msg = "Welcome Back " + user->username;
         reply->set_msg(msg);
@@ -280,14 +287,16 @@ class SNSServiceImpl final : public SNSService::Service
       google::protobuf::Timestamp temptime = message.timestamp();
       std::string time = google::protobuf::util::TimeUtil::ToString(temptime);
       std::string fileinput = time + " :: " + message.username() + ":" + message.msg() + "\n";
-      forward_to_worker("timeline", username, fileinput);
       //"Set Stream" is the default message from the client to initialize the stream
-      if (message.msg() != "Set Stream" and message.msg() != "Update\n")
+      if ((message.msg() != "Set Stream") && (message.msg() != "Update\n") && (message.msg() != "Set Stream\n")){
         user_file << fileinput;
+        forward_to_worker("timeline", username, fileinput);
+      }
         // also update the stream from file
       // If message = "Set Stream", print the first 20 chats from the people you follow
       else
       {
+        user_file.close();
         if (c->stream == 0)
           c->stream = stream;
         std::string line;
@@ -338,6 +347,7 @@ class SNSServiceImpl final : public SNSService::Service
         std::string temp_file = temp_username + "_following.txt";
         std::ofstream timeline_file("./" + type + std::to_string(cluster_id) + "/" + temp_file, std::ios::app | std::ios::out | std::ios::in);
         timeline_file << fileinput;
+        std::cout<<fileinput<<std::endl;
         temp_client->following_file_size++;
         std::ofstream user_file(temp_username + "_timeline", std::ios::app | std::ios::out | std::ios::in);
         user_file << fileinput;
